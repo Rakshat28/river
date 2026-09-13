@@ -1,69 +1,156 @@
-import Image from "next/image";
+"use client";
+
+import Daily from "@daily-co/daily-js";
+import {
+  DailyAudio,
+  DailyProvider,
+  useDaily,
+  useDailyEvent,
+} from "@daily-co/daily-react";
+import { useEffect, useState } from "react";
+
+import { createDailySession, type DailySessionResponse } from "@/lib/daily-client";
+
+function CallRoom({
+  session,
+  onEndCall,
+}: {
+  session: DailySessionResponse;
+  onEndCall: () => void;
+}) {
+  const callObject = useDaily();
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useDailyEvent("joined-meeting", () => {
+    setIsConnected(true);
+    setError(null);
+  });
+
+  useDailyEvent("left-meeting", () => {
+    setIsConnected(false);
+    onEndCall();
+  });
+
+  useDailyEvent("error", (event) => {
+    const errorMessage =
+      event?.errorMsg || event?.error || "Meeting ended unexpectedly";
+    setError(String(errorMessage));
+    setIsConnected(false);
+  });
+
+  const handleLeave = async () => {
+    if (!callObject) return;
+    try {
+      await callObject.leave();
+      setIsConnected(false);
+      onEndCall();
+    } catch (err) {
+      console.error("Error leaving call:", err);
+      setError("Failed to leave call");
+    }
+  };
+
+  useEffect(() => {
+    if (!callObject) {
+      return;
+    }
+
+    void callObject.join({
+      url: session.room_url,
+      token: session.token,
+      startAudioOff: false,
+      startVideoOff: true,
+      showLocalVideo: false,
+      subscribeToTracksAutomatically: true,
+    });
+  }, [callObject, session]);
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-950 px-6 text-zinc-50">
+        <div className="rounded-lg border border-red-700 bg-red-950 px-6 py-4 text-center">
+          <p className="text-sm font-medium text-red-200">Call Error</p>
+          <p className="mt-2 text-sm text-red-100">{error}</p>
+          <button
+            type="button"
+            onClick={onEndCall}
+            className="mt-4 rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-500"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-950 px-6 text-zinc-50">
+      <DailyAudio />
+      <div className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200">
+        {isConnected ? "Connected" : "Connecting..."}
+      </div>
+      {isConnected && (
+        <button
+          type="button"
+          onClick={handleLeave}
+          className="rounded-full bg-red-600 px-6 py-3 text-base font-semibold text-white transition hover:bg-red-500"
+        >
+          End Call
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function Home() {
+  const [session, setSession] = useState<DailySessionResponse | null>(null);
+  const [dailyCall, setDailyCall] = useState<ReturnType<typeof Daily.createCallObject> | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+
+  const handleStartCall = async () => {
+    setIsStarting(true);
+
+    try {
+      const createdSession = await createDailySession();
+      const callObject = Daily.createCallObject({
+        startAudioOff: false,
+        startVideoOff: true,
+        showLocalVideo: false,
+      });
+
+      setSession(createdSession);
+      setDailyCall(callObject);
+    } catch (error) {
+      console.error("Unable to start Daily call:", error);
+      setSession(null);
+      setDailyCall(null);
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  const handleEndCall = () => {
+    setSession(null);
+    setDailyCall(null);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-6">
+      {!dailyCall || !session ? (
+        <button
+          type="button"
+          onClick={handleStartCall}
+          disabled={isStarting}
+          className="rounded-full bg-emerald-500 px-6 py-3 text-base font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isStarting ? "Starting..." : "Start Call"}
+        </button>
+      ) : (
+        <DailyProvider callObject={dailyCall}>
+          <CallRoom session={session} onEndCall={handleEndCall} />
+        </DailyProvider>
+      )}
+    </main>
   );
 }
