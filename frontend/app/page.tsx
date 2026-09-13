@@ -61,7 +61,6 @@ function CallRoom({
       token: session.token,
       startAudioOff: false,
       startVideoOff: true,
-      showLocalVideo: false,
       subscribeToTracksAutomatically: true,
     });
   }, [callObject, session]);
@@ -116,7 +115,6 @@ export default function Home() {
       const callObject = Daily.createCallObject({
         startAudioOff: false,
         startVideoOff: true,
-        showLocalVideo: false,
       });
 
       setSession(createdSession);

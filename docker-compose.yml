@@ -4,6 +4,8 @@ services:
       context: ./frontend
     ports:
       - "3000:3000"
+    env_file: 
+      - .env
     command: npm run dev -- --hostname 0.0.0.0
 
   agent:
@@ -11,4 +13,6 @@ services:
       context: ./agent
     ports:
       - "8000:8000"
+    env_file: 
+      - .env
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
