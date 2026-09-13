@@ -1,0 +1,14 @@
+services:
+  web:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    command: npm run dev -- --hostname 0.0.0.0
+
+  agent:
+    build:
+      context: ./agent
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
