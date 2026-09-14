@@ -34,3 +34,7 @@ yarn-error.log*
 
 # OS
 .DS_Store
+
+# Tool outputs / dumps
+repomix-output.xml
+

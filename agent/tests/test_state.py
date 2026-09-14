@@ -1,4 +1,5 @@
 """Unit tests for agent/app/state.py."""
+
 import asyncio
 import sys
 from datetime import date, datetime, timezone
@@ -19,6 +20,7 @@ from app.state import (  # noqa: E402
     FieldHistory,
     Recurrence,
     SessionState,
+    compute_blocking_issues,
     compute_cash_position,
     compute_missing_fields,
 )
@@ -411,17 +413,23 @@ class TestComputeCashPosition:
             income=[
                 _entry(
                     name="Salary",
-                    current=_field_history(amount_paise=5000000, confidence="confirmed"),
+                    current=_field_history(
+                        amount_paise=5000000, confidence="confirmed"
+                    ),
                 ),
                 _entry(
                     name="Freelance",
-                    current=_field_history(amount_paise=1000000, confidence="estimated"),
+                    current=_field_history(
+                        amount_paise=1000000, confidence="estimated"
+                    ),
                 ),
             ],
             essential_expenses=[
                 _entry(
                     name="Rent",
-                    current=_field_history(amount_paise=1500000, confidence="confirmed"),
+                    current=_field_history(
+                        amount_paise=1500000, confidence="confirmed"
+                    ),
                 )
             ],
         )
@@ -432,7 +440,9 @@ class TestComputeCashPosition:
             income=[
                 _entry(
                     name="Bonus",
-                    current=_field_history(amount_paise=2000000, confidence="estimated"),
+                    current=_field_history(
+                        amount_paise=2000000, confidence="estimated"
+                    ),
                 )
             ]
         )
@@ -444,7 +454,9 @@ class TestComputeCashPosition:
             income=[
                 _entry(
                     name="Salary",
-                    current=_field_history(amount_paise=5000000, confidence="confirmed"),
+                    current=_field_history(
+                        amount_paise=5000000, confidence="confirmed"
+                    ),
                 )
             ],
             optional_expenses=[
@@ -467,7 +479,9 @@ class TestComputeCashPosition:
             income=[
                 _entry(
                     name="Salary",
-                    current=_field_history(amount_paise=5000000, confidence="confirmed"),
+                    current=_field_history(
+                        amount_paise=5000000, confidence="confirmed"
+                    ),
                 )
             ]
         )
@@ -478,17 +492,22 @@ class TestComputeCashPosition:
             income=[
                 _entry(
                     name="Salary",
-                    current=_field_history(amount_paise=1000000, confidence="confirmed"),
+                    current=_field_history(
+                        amount_paise=1000000, confidence="confirmed"
+                    ),
                 )
             ],
             essential_expenses=[
                 _entry(
                     name="Rent",
-                    current=_field_history(amount_paise=1500000, confidence="confirmed"),
+                    current=_field_history(
+                        amount_paise=1500000, confidence="confirmed"
+                    ),
                 )
             ],
         )
         assert compute_cash_position(state) == -500000
+
     def test_empty_state_missing_both(self):
         state = _session_state()
         assert compute_missing_fields(state) == ["income", "obligations"]
@@ -529,6 +548,85 @@ class TestComputeCashPosition:
         )
         assert compute_missing_fields(state) == []
 
+
+class TestComputeBlockingIssues:
+    def test_complete_state_no_issues(self):
+        state = _session_state(
+            income=[_entry()],
+            essential_expenses=[_entry(name="Rent", amount_paise=2000000)],
+        )
+        assert compute_blocking_issues(state) == []
+
+    def test_complete_state_one_unresolved_conflict(self):
+        conflict = Conflict(
+            id="conflict_1",
+            entry_id="entry_1",
+            field_name="amount_paise",
+            old_amount_paise=100000,
+            new_amount_paise=150000,
+            resolved=False,
+            created_at=datetime.now(timezone.utc),
+        )
+        state = _session_state(
+            income=[_entry()],
+            essential_expenses=[_entry(name="Rent", amount_paise=2000000)],
+            conflicts=[conflict],
+        )
+        assert compute_blocking_issues(state) == ["unresolved_conflict"]
+
+    def test_complete_state_resolved_conflict_ignored(self):
+        conflict = Conflict(
+            id="conflict_1",
+            entry_id="entry_1",
+            field_name="amount_paise",
+            old_amount_paise=100000,
+            new_amount_paise=150000,
+            resolved=True,
+            created_at=datetime.now(timezone.utc),
+        )
+        state = _session_state(
+            income=[_entry()],
+            essential_expenses=[_entry(name="Rent", amount_paise=2000000)],
+            conflicts=[conflict],
+        )
+        assert compute_blocking_issues(state) == []
+
+    def test_complete_state_one_unresolved_possible_duplicate(self):
+        state = _session_state(
+            income=[_entry(possible_duplicate=True)],
+            essential_expenses=[_entry(name="Rent", amount_paise=2000000)],
+        )
+        assert compute_blocking_issues(state) == ["unresolved_duplicate"]
+
+    def test_incomplete_state_with_both_issues(self):
+        conflict = Conflict(
+            id="conflict_1",
+            entry_id="entry_1",
+            field_name="amount_paise",
+            old_amount_paise=100000,
+            new_amount_paise=150000,
+            resolved=False,
+            created_at=datetime.now(timezone.utc),
+        )
+        state = _session_state(
+            optional_expenses=[
+                _entry(name="Netflix", amount_paise=50000, possible_duplicate=True)
+            ],
+            conflicts=[conflict],
+        )
+        issues = compute_blocking_issues(state)
+        assert "income" in issues
+        assert "obligations" in issues
+        assert "unresolved_conflict" in issues
+        assert "unresolved_duplicate" in issues
+        assert issues == [
+            "income",
+            "obligations",
+            "unresolved_conflict",
+            "unresolved_duplicate",
+        ]
+
+
 class TestLockedStateConcurrency:
     """Step 3.5's acceptance check: `agent/app/session_store.py`'s per-room
     `asyncio.Lock` must stop two tool calls resolved within the same LLM
@@ -539,10 +637,10 @@ class TestLockedStateConcurrency:
     `pytest-asyncio` isn't a project dependency and adding one is an
     "ask first" item (AGENTS.md Section 9).
     """
- 
+
     def test_two_concurrent_mutations_are_both_preserved(self):
         room_name = "concurrency-test-room"
- 
+
         async def _add_income(name: str) -> None:
             async with locked_state(room_name) as state:
                 # Force an interleaving point in the middle of the
@@ -552,22 +650,22 @@ class TestLockedStateConcurrency:
                 await asyncio.sleep(0)
                 state.income.append(_entry(name=name))
                 state.state_version += 1
- 
+
         async def _run() -> SessionState:
             get_or_create(room_name, date(2026, 9, 13))
             await asyncio.gather(_add_income("Salary"), _add_income("Freelance"))
             async with locked_state(room_name) as state:
                 return state
- 
+
         state = asyncio.run(_run())
- 
+
         # Both mutations present -> neither was lost to the race.
         assert {entry.name for entry in state.income} == {"Salary", "Freelance"}
         assert len(state.income) == 2
         # Incremented by exactly 2, not 1 -> confirms serialization, not
         # just "both entries happened to survive by luck".
         assert state.state_version == 2
- 
+
     def test_get_or_create_returns_the_same_room_session_on_repeat_calls(self):
         room_name = "get-or-create-idempotency-room"
         first = get_or_create(room_name, date(2026, 9, 13))
@@ -576,11 +674,11 @@ class TestLockedStateConcurrency:
         second = get_or_create(room_name, date(2099, 1, 1))
         assert first is second
         assert second.state.today == date(2026, 9, 13)
- 
+
     def test_locked_state_raises_for_unknown_room(self):
         async def _run() -> None:
             async with locked_state("room-that-was-never-created"):
                 pass  # pragma: no cover - should never reach the body
- 
+
         with pytest.raises(KeyError):
             asyncio.run(_run())

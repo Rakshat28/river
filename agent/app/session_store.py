@@ -10,7 +10,7 @@ from typing import AsyncGenerator
 
 try:
     from agent.app.state import SessionState
-except ImportError:  
+except ImportError:
     from app.state import SessionState
 
 
@@ -24,8 +24,10 @@ class RoomSession:
     each mutate their own view of the object, and the second write could
     silently clobber the first's changes — a classic read-modify-write race.
     """
+
     state: SessionState
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
 
 _rooms: dict[str, RoomSession] = {}
 

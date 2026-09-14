@@ -182,9 +182,29 @@ def compute_missing_fields(state: SessionState) -> list[str]:
         missing.append("obligations")
     return missing
 
+
+def compute_blocking_issues(state: SessionState) -> list[str]:
+    """Return all conditions preventing plan finalization: missing fields,
+    unresolved conflicts, or unresolved possible duplicates.
+
+    This is the sole guard checked by `finalize_plan`.
+    """
+    issues = compute_missing_fields(state)
+    if any(not conflict.resolved for conflict in state.conflicts):
+        issues.append("unresolved_conflict")
+
+    all_entries = (
+        state.income + state.essential_expenses + state.optional_expenses + state.debts
+    )
+    if any(entry.possible_duplicate for entry in all_entries):
+        issues.append("unresolved_duplicate")
+
+    return issues
+
+
 def compute_cash_position(state: SessionState) -> int:
     """Return a rough confirmed-only cash position, in paise.
- 
+
     NOT the final plan calculation. This is a placeholder pre-engine
     number — confirmed income minus confirmed essential expenses, nothing
     else. It excludes debts and optional_expenses entirely, and excludes

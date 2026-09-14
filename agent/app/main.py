@@ -2,6 +2,7 @@
 
 This keeps the backend entrypoint thin while the rest of the agent is built out.
 """
+
 import asyncio
 import logging
 from fastapi import FastAPI, HTTPException
@@ -41,7 +42,9 @@ def health() -> dict[str, str]:
     """Return a simple liveness response for the agent process."""
     return {"status": "ok"}
 
+
 active_bot_tasks = set()
+
 
 @app.post("/api/session", response_model=SessionResponse)
 async def create_session() -> SessionResponse:
@@ -60,13 +63,14 @@ async def create_session() -> SessionResponse:
     if room.url is None:
         raise HTTPException(status_code=500, detail="Daily room URL missing")
 
-    async def _bot_task_wrapper(url:str, token:str) -> None:
+    async def _bot_task_wrapper(url: str, token: str) -> None:
         """Wrap the bot execution to prevent silent backround task crashes"""
-        try: 
+        try:
             logger.info(f"Spawning bot task for room: {url}")
             await run_bot(url, token)
         except Exception as exc:
             logger.error(f"Bot background task crashed for {url}: {exc}", exc_info=True)
+
     task = asyncio.create_task(_bot_task_wrapper(room.url, bot_token))
     active_bot_tasks.add(task)
     task.add_done_callback(active_bot_tasks.discard)
