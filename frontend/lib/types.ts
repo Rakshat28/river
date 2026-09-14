@@ -64,8 +64,11 @@ export interface SessionState {
   optional_expenses: Entry[];
   debts: Debt[];
   conflicts: Conflict[];
-  plan: any | null; 
+  plan: unknown | null; 
   turn_index: number;
   state_version: number;
   updated_at: string; // ISO date string
+  cash_position_paise?: number;
+  missing_fields?: string[];
+  blocking_issues?: string[];
 }

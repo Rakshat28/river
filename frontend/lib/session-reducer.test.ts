@@ -1,5 +1,5 @@
-import { sessionReducer } from "./session-reducer.ts";
-import type { SessionState } from "./types.ts";
+import { sessionReducer } from "./session-reducer";
+import type { SessionState } from "./types";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {

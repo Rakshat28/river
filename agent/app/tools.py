@@ -12,6 +12,7 @@ from app.state import (
     Debt,
     Entry,
     FieldHistory,
+    Recurrence,
     Conflict,
     compute_blocking_issues,
 )
@@ -27,6 +28,11 @@ from app.validation import (
     UpdateEntryArgs,
 )
 from app.entity_resolution import find_near_duplicate
+
+try:
+    from agent.app.engine import build_plan
+except ImportError:
+    from app.engine import build_plan
 
 TOOL_SCHEMAS = [
     {
@@ -419,6 +425,9 @@ async def add_income(
         name=args.name,
         current=history,
         history=[],
+        recurrence=Recurrence(
+            unit="month", interval=1, count=1, day_of_month=args.date.day
+        ),
         possible_duplicate=bool(existing_id),
         duplicate_of=existing_id,
     )
@@ -459,6 +468,9 @@ async def add_expense(
         name=args.name,
         current=history,
         history=[],
+        recurrence=Recurrence(
+            unit="month", interval=1, count=1, day_of_month=args.date.day
+        ),
         possible_duplicate=bool(existing_id),
         duplicate_of=existing_id,
     )
@@ -705,13 +717,21 @@ async def remove_entry(
 async def finalize_plan(
     room_name: str, args: FinalizePlanArgs = None, state: SessionState = None
 ) -> ToolResult:
-    """Guard plan finalization using compute_blocking_issues."""
+    """Guard plan finalization using compute_blocking_issues and generate the 30-day cash flow plan."""
     blocking = compute_blocking_issues(state)
     if blocking:
         return ToolResult.error(
             f"Cannot finalize plan. The following blocking issues must be resolved first: {', '.join(blocking)}"
         )
-    return ToolResult.ok(message="Plan criteria met.")
+    plan_result = build_plan(state)
+    state.plan = plan_result
+    return ToolResult.ok(
+        message="Plan criteria met and 30-day plan generated successfully.",
+        status=plan_result.status,
+        final_balance_paise=plan_result.final_balance_paise,
+        cuts=[c.model_dump() for c in plan_result.cuts],
+        missed_obligations=[m.model_dump() for m in plan_result.missed_obligations],
+    )
 
 
 @state_mutation

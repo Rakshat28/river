@@ -1,4 +1,4 @@
-import type { SessionState } from "./types.ts";
+import type { SessionState } from "./types";
 
 export type SessionAction =
   | { type: "HYDRATE"; payload: SessionState }
@@ -20,9 +20,13 @@ export function sessionReducer(
       }
 
       const currentVersion =
-        state.state_version ?? (state as any).stateVersion ?? 0;
+        state.state_version ??
+        (state as unknown as { stateVersion?: number }).stateVersion ??
+        0;
       const incomingVersion =
-        action.payload.state_version ?? (action.payload as any).stateVersion ?? 0;
+        action.payload.state_version ??
+        (action.payload as unknown as { stateVersion?: number }).stateVersion ??
+        0;
 
       // Guards against the theoretical case of two broadcasts arriving out of order over the data channel:
       // if the incoming payload's stateVersion is less than or equal to the currently held version, ignore the update (no-op).

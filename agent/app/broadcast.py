@@ -56,6 +56,9 @@ class BroadcastPayload(BaseModel):
     turn_index: int = 0
     state_version: int = 0
     updated_at: datetime
+    cash_position_paise: int = 0
+    missing_fields: list[str] = Field(default_factory=list)
+    blocking_issues: list[str] = Field(default_factory=list)
 
 
 def _trim_entry(entry: Entry) -> TrimmedEntry:
@@ -84,6 +87,9 @@ def to_broadcast_payload(state: SessionState) -> BroadcastPayload:
         turn_index=state.turn_index,
         state_version=state.state_version,
         updated_at=state.updated_at,
+        cash_position_paise=state.cash_position_paise,
+        missing_fields=state.missing_fields,
+        blocking_issues=state.blocking_issues,
     )
 
 

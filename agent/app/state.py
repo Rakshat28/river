@@ -6,7 +6,14 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    computed_field,
+    model_validator,
+)
 
 Confidence = Literal["confirmed", "estimated"]
 
@@ -171,6 +178,21 @@ class SessionState(BaseModel):
     turn_index: int = 0
     state_version: int = 0
     updated_at: datetime
+
+    @computed_field
+    @property
+    def cash_position_paise(self) -> int:
+        return compute_cash_position(self)
+
+    @computed_field
+    @property
+    def missing_fields(self) -> list[str]:
+        return compute_missing_fields(self)
+
+    @computed_field
+    @property
+    def blocking_issues(self) -> list[str]:
+        return compute_blocking_issues(self)
 
 
 def compute_missing_fields(state: SessionState) -> list[str]:

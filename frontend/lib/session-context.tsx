@@ -67,7 +67,9 @@ export function SessionDailySubscriber({ roomName }: { roomName?: string }) {
       const roomInfo = callObject?.room();
       const name =
         roomName ||
-        (roomInfo && "name" in roomInfo ? (roomInfo as any).name : undefined);
+        (roomInfo && "name" in roomInfo
+          ? (roomInfo as unknown as { name: string }).name
+          : undefined);
       if (name) {
         void hydrateState(name);
       }
@@ -83,7 +85,7 @@ export function SessionDailySubscriber({ roomName }: { roomName?: string }) {
 
   useAppMessage({
     onAppMessage: useCallback(
-      (event: any) => {
+      (event: { data?: unknown }) => {
         let payload = event?.data;
         if (typeof payload === "string") {
           try {
@@ -94,9 +96,10 @@ export function SessionDailySubscriber({ roomName }: { roomName?: string }) {
         }
         if (
           payload &&
-          (payload.state_version !== undefined ||
-            payload.stateVersion !== undefined ||
-            payload.room_name)
+          typeof payload === "object" &&
+          (("state_version" in payload && payload.state_version !== undefined) ||
+            ("stateVersion" in payload && payload.stateVersion !== undefined) ||
+            ("room_name" in payload && payload.room_name !== undefined))
         ) {
           dispatch({ type: "SET_STATE", payload: payload as SessionState });
         }
@@ -110,7 +113,9 @@ export function SessionDailySubscriber({ roomName }: { roomName?: string }) {
       const roomInfo = callObject?.room();
       const name =
         roomName ||
-        (roomInfo && "name" in roomInfo ? (roomInfo as any).name : undefined);
+        (roomInfo && "name" in roomInfo
+          ? (roomInfo as unknown as { name: string }).name
+          : undefined);
       if (name) {
         void hydrateState(name);
       }
