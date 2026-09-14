@@ -56,6 +56,28 @@ export interface Conflict {
   created_at: string; // ISO date string
 }
 
+export interface MissedObligation {
+  entry_id: string;
+  name: string;
+  due_date: string;
+  required_paise: number;
+  available_paise: number;
+  shortfall_paise: number;
+}
+
+export interface LedgerEntry {
+  day_offset: number;
+  balance_paise: number;
+}
+
+export interface PlanResult {
+  status: "surplus" | "solved_with_cuts" | "unsolvable";
+  final_balance_paise: number;
+  cuts: Entry[];
+  missed_obligations: MissedObligation[];
+  ledger: LedgerEntry[];
+}
+
 export interface SessionState {
   room_name: string;
   today: string; // ISO date string
@@ -64,7 +86,7 @@ export interface SessionState {
   optional_expenses: Entry[];
   debts: Debt[];
   conflicts: Conflict[];
-  plan: unknown | null; 
+  plan: PlanResult | null;
   turn_index: number;
   state_version: number;
   updated_at: string; // ISO date string

@@ -6,7 +6,9 @@ import { DebtsCard } from "./DebtsCard";
 import { MissingInformationCard } from "./MissingInformationCard";
 import { CashPositionCard } from "./CashPositionCard";
 import { ShortfallSurplusCard } from "./ShortfallSurplusCard";
-import type { SessionState, Entry, Debt } from "@/lib/types";
+import { FinalPlanCard } from "./FinalPlanCard";
+import { ProposedActionsCard } from "./ProposedActionsCard";
+import type { SessionState, Entry, Debt, PlanResult } from "@/lib/types";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -121,5 +123,60 @@ assert(cashHtml.includes("text-emerald-400"), "CashPositionCard missing green su
 const shortfallHtml = renderToString(React.createElement(ShortfallSurplusCard, { cashPositionPaise: -1000000 }));
 assert(shortfallHtml.includes("-₹10,000"), "ShortfallSurplusCard missing negative shortfall formatting");
 assert(shortfallHtml.includes("text-rose-400"), "ShortfallSurplusCard missing red shortfall color class");
+
+// 6. Test FinalPlanCard & ProposedActionsCard (Step 8.2 acceptance check)
+const mockUnsolvablePlan: PlanResult = {
+  status: "unsolvable",
+  final_balance_paise: 0,
+  cuts: [],
+  missed_obligations: [
+    {
+      entry_id: "entry_debt1",
+      name: "Loan EMI",
+      due_date: "2026-09-29",
+      required_paise: 800000,
+      available_paise: 500000,
+      shortfall_paise: 300000,
+    },
+  ],
+  ledger: [
+    { day_offset: 0, balance_paise: 2000000 },
+    { day_offset: 15, balance_paise: 500000 },
+  ],
+};
+
+const mockSolvedPlan: PlanResult = {
+  status: "solved_with_cuts",
+  final_balance_paise: 0,
+  cuts: [
+    {
+      id: "cut1",
+      name: "Dining Out",
+      current: {
+        amount_paise: 400000,
+        confidence: "confirmed",
+        turn_index: 1,
+        timestamp: "2026-09-14T12:00:00Z",
+      },
+      history: [],
+      recurrence: "one_time",
+      possible_duplicate: false,
+      duplicate_of: null,
+    },
+  ],
+  missed_obligations: [],
+  ledger: [{ day_offset: 0, balance_paise: 3000000 }],
+};
+
+const unsolvablePlanHtml = renderToString(React.createElement(FinalPlanCard, { plan: mockUnsolvablePlan }));
+assert(unsolvablePlanHtml.includes("Unsolvable Shortfall"), "FinalPlanCard missing unsolvable badge");
+assert(unsolvablePlanHtml.includes("Loan EMI"), "FinalPlanCard missing missed obligation name");
+
+const solvedPlanHtml = renderToString(React.createElement(FinalPlanCard, { plan: mockSolvedPlan }));
+assert(solvedPlanHtml.includes("Solved with Proposed Cuts"), "FinalPlanCard missing solved badge");
+
+const actionsHtml = renderToString(React.createElement(ProposedActionsCard, { plan: mockSolvedPlan }));
+assert(actionsHtml.includes("Dining Out"), "ProposedActionsCard missing cut item name");
+assert(actionsHtml.includes("-₹4,000"), "ProposedActionsCard missing formatted cut amount");
 
 console.log("All frontend card component unit tests passed!");

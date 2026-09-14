@@ -18,6 +18,8 @@ import { DebtsCard } from "@/components/cards/DebtsCard";
 import { MissingInformationCard } from "@/components/cards/MissingInformationCard";
 import { CashPositionCard } from "@/components/cards/CashPositionCard";
 import { ShortfallSurplusCard } from "@/components/cards/ShortfallSurplusCard";
+import { FinalPlanCard } from "@/components/cards/FinalPlanCard";
+import { ProposedActionsCard } from "@/components/cards/ProposedActionsCard";
 
 function CallRoom({
   session,
@@ -147,6 +149,12 @@ function CallRoom({
             essentialExpenses={state?.essential_expenses ?? []}
           />
           <DebtsCard debts={state?.debts ?? []} />
+        </div>
+
+        {/* Final Plan & Proposed Actions Row */}
+        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FinalPlanCard plan={state?.plan ?? null} />
+          <ProposedActionsCard plan={state?.plan ?? null} />
         </div>
       </div>
     </div>

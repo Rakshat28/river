@@ -16,6 +16,8 @@ from app.validation import (
     AddDebtArgs,
     AddExpenseArgs,
     AddIncomeArgs,
+    ConfirmUserUnderstoodArgs,
+    FinalizePlanArgs,
     ResolveDuplicateArgs,
     UpdateEntryArgs,
 )
@@ -26,6 +28,8 @@ from app.tools import (
     add_debt,
     add_expense,
     add_income,
+    confirm_user_understood,
+    finalize_plan,
     resolve_duplicate,
     update_entry,
 )
@@ -500,3 +504,73 @@ class TestUpdateEntryConflictDetection:
 
         state = asyncio.run(_get_state_helper(room_name))
         assert state.income[0].current.amount_paise == 1150000
+
+
+class TestFinalizePlanAndComprehension:
+    """Step 8.1 & Step 8.4 tests for finalize_plan and confirm_user_understood."""
+
+    def test_finalize_plan_incomplete_state_returns_error_and_does_not_populate_plan(
+        self,
+    ):
+        room_name = "test-finalize-incomplete"
+        today = date(2026, 9, 14)
+        get_or_create(room_name, today)
+
+        # Calling finalize_plan when income and obligations are missing
+        res = asyncio.run(finalize_plan(room_name, FinalizePlanArgs()))
+        assert res.status == "error"
+        assert "Cannot finalize plan" in res.message
+
+        state = asyncio.run(_get_state_helper(room_name))
+        assert state.plan is None
+
+    def test_finalize_plan_complete_state_populates_plan(self):
+        room_name = "test-finalize-complete"
+        today = date(2026, 9, 14)
+        get_or_create(room_name, today)
+
+        # Add income ₹50,000 and expense ₹15,000
+        asyncio.run(
+            add_income(
+                room_name,
+                AddIncomeArgs(
+                    name="Salary",
+                    amount_rupees=50000,
+                    date="2026-09-14",
+                    confidence="confirmed",
+                ),
+            )
+        )
+        asyncio.run(
+            add_expense(
+                room_name,
+                AddExpenseArgs(
+                    name="Rent",
+                    category="essential",
+                    amount_rupees=15000,
+                    date="2026-09-18",
+                    confidence="confirmed",
+                ),
+            )
+        )
+
+        res = asyncio.run(finalize_plan(room_name, FinalizePlanArgs()))
+        assert res.status == "ok"
+
+        state = asyncio.run(_get_state_helper(room_name))
+        assert state.plan is not None
+        assert state.plan.status == "surplus"
+        assert state.plan.final_balance_paise == 3500000
+
+    def test_confirm_user_understood(self):
+        room_name = "test-confirm-understood"
+        today = date(2026, 9, 14)
+        get_or_create(room_name, today)
+
+        res = asyncio.run(
+            confirm_user_understood(
+                room_name, ConfirmUserUnderstoodArgs(understood=True)
+            )
+        )
+        assert res.status == "ok"
+        assert res.data["understood"] is True

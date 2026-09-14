@@ -20,3 +20,5 @@ export function paiseToRupeesDisplay(paise: number): string {
   const paddedRemainder = remainderPaise.toString().padStart(2, "0");
   return `${sign}\u20B9${grouped}.${paddedRemainder}`;
 }
+
+export const formatPaiseToRupees = paiseToRupeesDisplay;
