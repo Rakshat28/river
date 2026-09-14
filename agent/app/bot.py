@@ -26,33 +26,11 @@ from pipecat.transports.daily.transport import DailyParams, DailyTransport
 from pipecat.workers.runner import WorkerRunner
 
 try:
-    from agent.app.prompt import SYSTEM_PROMPT
-    from agent.app.session_store import get_or_create
-    from agent.app.tools import (
-        TOOL_SCHEMAS,
-        ToolResult,
-        add_debt,
-        add_expense,
-        add_income,
-        confirm_user_understood,
-        finalize_plan,
-        remove_entry,
-        resolve_conflict,
-        resolve_duplicate,
-        update_entry,
+    from app.broadcast import (
+        TurnBroadcastProcessor,
+        register_room_transport,
+        unregister_room_transport,
     )
-    from agent.app.validation import (
-        AddDebtArgs,
-        AddExpenseArgs,
-        AddIncomeArgs,
-        ConfirmUserUnderstoodArgs,
-        FinalizePlanArgs,
-        RemoveEntryArgs,
-        ResolveConflictArgs,
-        ResolveDuplicateArgs,
-        UpdateEntryArgs,
-    )
-except ImportError:
     from app.prompt import SYSTEM_PROMPT
     from app.session_store import get_or_create
     from app.tools import (
@@ -69,6 +47,38 @@ except ImportError:
         update_entry,
     )
     from app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        RemoveEntryArgs,
+        ResolveConflictArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
+except ImportError:
+    from agent.app.broadcast import (
+        TurnBroadcastProcessor,
+        register_room_transport,
+        unregister_room_transport,
+    )
+    from agent.app.prompt import SYSTEM_PROMPT
+    from agent.app.session_store import get_or_create
+    from agent.app.tools import (
+        TOOL_SCHEMAS,
+        ToolResult,
+        add_debt,
+        add_expense,
+        add_income,
+        confirm_user_understood,
+        finalize_plan,
+        remove_entry,
+        resolve_conflict,
+        resolve_duplicate,
+        update_entry,
+    )
+    from agent.app.validation import (
         AddDebtArgs,
         AddExpenseArgs,
         AddIncomeArgs,
@@ -210,12 +220,16 @@ async def run_bot(room_url: str, token: str) -> None:
                 _create_pipecat_handler(room_name, pydantic_cls, handler_func),
             )
 
+        register_room_transport(room_name, transport)
+        turn_broadcaster = TurnBroadcastProcessor(room_name)
+
         pipeline = Pipeline(
             [
                 transport.input(),
                 stt,
                 context_aggregator.user(),
                 llm,
+                turn_broadcaster,
                 tts,
                 transport.output(),
                 context_aggregator.assistant(),
@@ -233,3 +247,5 @@ async def run_bot(room_url: str, token: str) -> None:
 
     except Exception as exc:
         logger.error(f"Bot session failed for room {room_url}: {exc}", exc_info=True)
+    finally:
+        unregister_room_transport(room_name)

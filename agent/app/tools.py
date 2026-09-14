@@ -364,11 +364,10 @@ class ToolResult(BaseModel):
         return cls(status="error", message=message)
 
 
-async def broadcast_state_update(room_name: str) -> None:
-    """Stub for broadcasting state updates to the frontend.
-    Implemented in Step 5.1.
-    """
-    pass
+try:
+    from app.broadcast import mark_room_dirty
+except ImportError:
+    from agent.app.broadcast import mark_room_dirty
 
 
 def state_mutation(func: Callable[..., Coroutine[Any, Any, ToolResult]]):
@@ -376,7 +375,7 @@ def state_mutation(func: Callable[..., Coroutine[Any, Any, ToolResult]]):
 
     1. Acquires the room's lock via `locked_state`.
     2. Runs the handler body, injecting the locked `SessionState` as a kwarg.
-    3. Increments `state_version` and broadcasts if the result was not an error.
+    3. Increments `state_version` and marks room dirty if the result was not an error.
     4. Automatically releases the lock.
     """
 
@@ -389,10 +388,11 @@ def state_mutation(func: Callable[..., Coroutine[Any, Any, ToolResult]]):
             result = await func(room_name, *args, **kwargs)
 
             # If the handler succeeded (or warned), it mutated state.
-            # Bump the version and broadcast.
+            # Bump the version and mark the room dirty.
+            # Batching per-turn, rather than per-tool-call, avoids a rapid burst of out-of-order messages when several facts are extracted from one utterance at once.
             if result.status in ("ok", "warning"):
                 state.state_version += 1
-                await broadcast_state_update(room_name)
+                mark_room_dirty(room_name)
 
             return result
 

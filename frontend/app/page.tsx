@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { createDailySession, type DailySessionResponse } from "@/lib/daily-client";
+import { SessionProvider, SessionDailySubscriber } from "@/lib/session-context";
 
 function CallRoom({
   session,
@@ -145,9 +146,12 @@ export default function Home() {
           {isStarting ? "Starting..." : "Start Call"}
         </button>
       ) : (
-        <DailyProvider callObject={dailyCall}>
-          <CallRoom session={session} onEndCall={handleEndCall} />
-        </DailyProvider>
+        <SessionProvider>
+          <DailyProvider callObject={dailyCall}>
+            <SessionDailySubscriber roomName={session.room_url.split("/").pop()} />
+            <CallRoom session={session} onEndCall={handleEndCall} />
+          </DailyProvider>
+        </SessionProvider>
       )}
     </main>
   );

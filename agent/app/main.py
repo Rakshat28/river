@@ -14,9 +14,13 @@ logger = logging.getLogger(__name__)
 try:
     from agent.app.daily_client import create_meeting_token, create_room
     from agent.app.bot import run_bot
+    from agent.app.session_store import locked_state
+    from agent.app.state import SessionState
 except ImportError:  # pragma: no cover - package layout varies by launch context
     from app.daily_client import create_meeting_token, create_room
     from app.bot import run_bot
+    from app.session_store import locked_state
+    from app.state import SessionState
 
 
 app = FastAPI()
@@ -75,3 +79,16 @@ async def create_session() -> SessionResponse:
     active_bot_tasks.add(task)
     task.add_done_callback(active_bot_tasks.discard)
     return SessionResponse(room_url=room.url, token=user_token)
+
+
+@app.get("/api/state/{room_name}", response_model=SessionState)
+async def get_state(room_name: str) -> SessionState:
+    """Return the FULL current SessionState snapshot for a room (including history)."""
+    try:
+        async with locked_state(room_name) as state:
+            return state
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": f"Room '{room_name}' not found"},
+        ) from exc
