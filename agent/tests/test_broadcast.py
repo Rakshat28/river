@@ -9,18 +9,32 @@ from pipecat.frames.frames import LLMFullResponseEndFrame
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.broadcast import (
-    BroadcastPayload,
-    TurnBroadcastProcessor,
-    clear_room_dirty,
-    is_room_dirty,
-    mark_room_dirty,
-    to_broadcast_payload,
-)
-from app.session_store import get_or_create, locked_state
-from app.state import Entry, FieldHistory, SessionState
-from app.tools import add_income
-from app.validation import AddIncomeArgs
+try:
+    from agent.app.broadcast import (
+        BroadcastPayload,
+        TurnBroadcastProcessor,
+        clear_room_dirty,
+        is_room_dirty,
+        mark_room_dirty,
+        to_broadcast_payload,
+    )
+    from agent.app.session_store import get_or_create, locked_state
+    from agent.app.state import Entry, FieldHistory, SessionState
+    from agent.app.tools import add_income
+    from agent.app.validation import AddIncomeArgs
+except ImportError:
+    from app.broadcast import (
+        BroadcastPayload,
+        TurnBroadcastProcessor,
+        clear_room_dirty,
+        is_room_dirty,
+        mark_room_dirty,
+        to_broadcast_payload,
+    )
+    from app.session_store import get_or_create, locked_state
+    from app.state import Entry, FieldHistory, SessionState
+    from app.tools import add_income
+    from app.validation import AddIncomeArgs
 
 
 def _field_history(amount_paise=100000) -> FieldHistory:

@@ -16,9 +16,21 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameProcessor
 
 try:
+    from agent.app.focus import (
+        derive_focus,
+        get_and_clear_tool_records,
+        get_room_focus,
+        set_room_focus,
+    )
     from agent.app.session_store import locked_state
     from agent.app.state import Conflict, Debt, Entry, SessionState
 except ImportError:
+    from app.focus import (
+        derive_focus,
+        get_and_clear_tool_records,
+        get_room_focus,
+        set_room_focus,
+    )
     from app.session_store import locked_state
     from app.state import Conflict, Debt, Entry, SessionState
 
@@ -122,35 +134,62 @@ def unregister_room_transport(room_name: str) -> None:
     _transports.pop(room_name, None)
 
 
+async def send_app_message_envelope(
+    room_name: str, msg_type: str, payload: Any
+) -> bool:
+    """Send an enveloped WebRTC app-message payload."""
+    try:
+        message_data = {
+            "type": msg_type,
+            "payload": (
+                payload.model_dump(mode="json")
+                if hasattr(payload, "model_dump")
+                else payload
+            ),
+        }
+        transport = _transports.get(room_name)
+        if transport is not None:
+            if hasattr(transport, "output"):
+                frame = OutputTransportMessageFrame(message=message_data)
+                await transport.output().process_frame(frame, None)
+            elif hasattr(transport, "send_app_message"):
+                await transport.send_app_message(message_data)
+        return True
+    except Exception as exc:
+        logger.error(
+            f"Failed to send app message '{msg_type}' for room {room_name}: {exc}"
+        )
+        return False
+
+
 async def broadcast_state_update(room_name: str) -> bool:
     """Build BroadcastPayload from current SessionState and send via Daily app-message."""
     try:
         async with locked_state(room_name) as state:
             payload = to_broadcast_payload(state)
 
-        message_data = {
-            "type": "state_update",
-            "payload": payload.model_dump(mode="json"),
-        }
-
-        transport = _transports.get(room_name)
-        if transport is not None:
-            # If transport pipeline output is accessible, push OutputTransportMessageFrame
-            if hasattr(transport, "output"):
-                frame = OutputTransportMessageFrame(message=message_data)
-                await transport.output().process_frame(frame, None)
-            elif hasattr(transport, "send_app_message"):
-                await transport.send_app_message(message_data)
-        logger.info(
-            f"Broadcast state update for room {room_name} (version={payload.state_version})"
-        )
-        return True
+        return await send_app_message_envelope(room_name, "state_update", payload)
     except Exception as exc:
         logger.error(
             f"Failed to broadcast state update for room {room_name}: {exc}",
             exc_info=True,
         )
         return False
+
+
+async def broadcast_focus_update(room_name: str, focus: str) -> bool:
+    """Broadcast a focus_update app message."""
+    return await send_app_message_envelope(room_name, "focus_update", {"focus": focus})
+
+
+async def broadcast_agent_utterance(room_name: str, text: str) -> bool:
+    """Broadcast an agent_utterance app message for live captions."""
+    return await send_app_message_envelope(room_name, "agent_utterance", {"text": text})
+
+
+async def broadcast_user_utterance(room_name: str, text: str) -> bool:
+    """Broadcast a user_utterance app message for live captions."""
+    return await send_app_message_envelope(room_name, "user_utterance", {"text": text})
 
 
 class TurnBroadcastProcessor(FrameProcessor):
@@ -163,6 +202,14 @@ class TurnBroadcastProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: Any) -> None:
         await super().process_frame(frame, direction)
         if isinstance(frame, LLMFullResponseEndFrame):
+            records = get_and_clear_tool_records(self._room_name)
+            async with locked_state(self._room_name) as state:
+                prev_focus = get_room_focus(self._room_name)
+                new_focus = derive_focus(prev_focus, records, state)
+                if new_focus != prev_focus:
+                    set_room_focus(self._room_name, new_focus)
+                    await broadcast_focus_update(self._room_name, new_focus)
+
             if is_room_dirty(self._room_name):
                 await broadcast_state_update(self._room_name)
                 clear_room_dirty(self._room_name)

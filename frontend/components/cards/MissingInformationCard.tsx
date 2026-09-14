@@ -13,7 +13,7 @@ export function MissingInformationCard({ missingFields = [] }: MissingInformatio
   const isComplete = missingFields.length === 0;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/90 p-5 shadow-lg backdrop-blur-sm">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/90 p-4 sm:p-5 shadow-lg backdrop-blur-sm">
       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
         <div className="flex items-center gap-2">
           <span
@@ -21,7 +21,7 @@ export function MissingInformationCard({ missingFields = [] }: MissingInformatio
               isComplete ? "bg-emerald-400" : "bg-sky-400"
             }`}
           />
-          <h3 className="text-base font-semibold text-zinc-100">Required Information Checklist</h3>
+          <h3 className="text-sm sm:text-base font-semibold text-zinc-100">Intake Progress</h3>
         </div>
         <span
           className={`rounded-md px-2 py-0.5 text-xs font-medium ${
@@ -30,7 +30,7 @@ export function MissingInformationCard({ missingFields = [] }: MissingInformatio
               : "bg-sky-950 text-sky-300 border border-sky-800/50"
           }`}
         >
-          {isComplete ? "Complete" : `${missingFields.length} missing`}
+          {isComplete ? "Complete" : `${missingFields.length} pending`}
         </span>
       </div>
 
@@ -39,16 +39,16 @@ export function MissingInformationCard({ missingFields = [] }: MissingInformatio
           <svg className="h-5 w-5 flex-shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <p className="text-sm font-medium">All minimum required financial information collected!</p>
+          <p className="text-xs sm:text-sm font-medium">All key financial details collected!</p>
         </div>
       ) : (
         <ul className="mt-3 space-y-2">
           {missingFields.map((field) => (
             <li
               key={field}
-              className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-300"
+              className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-300"
             >
-              <div className="h-4 w-4 rounded border border-zinc-600 bg-zinc-900" />
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
               <span className="text-sm font-medium">
                 {FIELD_LABELS[field] ?? field}
               </span>

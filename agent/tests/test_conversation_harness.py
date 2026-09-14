@@ -20,31 +20,58 @@ from pydantic import BaseModel, ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.session_store import get_or_create
-from app.state import SessionState
-from app.tools import (
-    ToolResult,
-    add_debt,
-    add_expense,
-    add_income,
-    confirm_user_understood,
-    finalize_plan,
-    remove_entry,
-    resolve_conflict,
-    resolve_duplicate,
-    update_entry,
-)
-from app.validation import (
-    AddDebtArgs,
-    AddExpenseArgs,
-    AddIncomeArgs,
-    ConfirmUserUnderstoodArgs,
-    FinalizePlanArgs,
-    RemoveEntryArgs,
-    ResolveConflictArgs,
-    ResolveDuplicateArgs,
-    UpdateEntryArgs,
-)
+try:
+    from agent.app.session_store import get_or_create
+    from agent.app.state import SessionState
+    from agent.app.tools import (
+        ToolResult,
+        add_debt,
+        add_expense,
+        add_income,
+        confirm_user_understood,
+        finalize_plan,
+        remove_entry,
+        resolve_conflict,
+        resolve_duplicate,
+        update_entry,
+    )
+    from agent.app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        RemoveEntryArgs,
+        ResolveConflictArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
+except ImportError:
+    from app.session_store import get_or_create
+    from app.state import SessionState
+    from app.tools import (
+        ToolResult,
+        add_debt,
+        add_expense,
+        add_income,
+        confirm_user_understood,
+        finalize_plan,
+        remove_entry,
+        resolve_conflict,
+        resolve_duplicate,
+        update_entry,
+    )
+    from app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        RemoveEntryArgs,
+        ResolveConflictArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
 
 TOOL_MAP: dict[str, tuple[type[BaseModel], Callable[..., Any]]] = {
     "add_income": (AddIncomeArgs, add_income),

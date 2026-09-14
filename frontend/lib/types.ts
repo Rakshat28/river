@@ -39,10 +39,11 @@ export interface Entry {
 export interface Debt extends Entry {
   kind: DebtKind;
   kind_label: string | null;
-  due_date: string; // ISO date string
+  due_date: string | null; // ISO date string
   min_payment_paise: number;
   balance_paise: number | null;
   interest_rate_bps: number | null;
+  duration_months: number | null;
   is_secured: boolean | null;
 }
 
@@ -75,7 +76,12 @@ export interface PlanResult {
   final_balance_paise: number;
   cuts: Entry[];
   missed_obligations: MissedObligation[];
-  ledger: LedgerEntry[];
+  income: Entry[];
+  essential_expenses: Entry[];
+  optional_expenses: Entry[];
+  debts: Debt[];
+  insights?: string[];
+  disclaimer?: string;
 }
 
 export interface SessionState {
@@ -94,3 +100,40 @@ export interface SessionState {
   missing_fields?: string[];
   blocking_issues?: string[];
 }
+
+export type FocusTarget =
+  | "idle"
+  | "income"
+  | "essential_expenses"
+  | "optional_expenses"
+  | "debts"
+  | "conflict"
+  | "duplicate"
+  | "missing_info"
+  | "plan";
+
+export interface StateUpdateMessage {
+  type: "state_update";
+  payload: SessionState;
+}
+
+export interface FocusUpdateMessage {
+  type: "focus_update";
+  payload: { focus: FocusTarget };
+}
+
+export interface AgentUtteranceMessage {
+  type: "agent_utterance";
+  payload: { text: string };
+}
+
+export interface UserUtteranceMessage {
+  type: "user_utterance";
+  payload: { text: string };
+}
+
+export type AppMessageEnvelope =
+  | StateUpdateMessage
+  | FocusUpdateMessage
+  | AgentUtteranceMessage
+  | UserUtteranceMessage;

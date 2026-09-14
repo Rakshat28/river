@@ -129,10 +129,11 @@ class Debt(Entry):
 
     kind: DebtKind
     kind_label: str | None = None
-    due_date: date
+    due_date: date | None = None
     min_payment_paise: StrictInt = Field(gt=0)
     balance_paise: StrictInt | None = None
     interest_rate_bps: StrictInt | None = None
+    duration_months: int | None = None  # Remaining loan tenure in months, if provided
     is_secured: bool | None = None
 
     @model_validator(mode="after")
@@ -220,6 +221,9 @@ def compute_blocking_issues(state: SessionState) -> list[str]:
     )
     if any(entry.possible_duplicate for entry in all_entries):
         issues.append("unresolved_duplicate")
+        
+    if any(d.due_date is None for d in state.debts):
+        issues.append("missing_due_date")
 
     return issues
 
@@ -228,10 +232,9 @@ def compute_cash_position(state: SessionState) -> int:
     """Return a rough confirmed-only cash position, in paise.
 
     NOT the final plan calculation. This is a placeholder pre-engine
-    number — confirmed income minus confirmed essential expenses, nothing
-    else. It excludes debts and optional_expenses entirely, and excludes
-    any entry with confidence == 'estimated' completely (no partial
-    weight, no discount) rather than guessing at how much of an
+    number — confirmed income minus all confirmed obligations (essential,
+    optional, and debt minimums). It excludes any entry with confidence == 'estimated' 
+    completely (no partial weight, no discount) rather than guessing at how much of an
     unconfirmed figure to trust. The real 30-day simulation, which does
     account for all of that, is Phase 7's `build_plan`.
     """
@@ -245,4 +248,18 @@ def compute_cash_position(state: SessionState) -> int:
         for entry in state.essential_expenses
         if entry.current.confidence == "confirmed"
     )
-    return confirmed_income - confirmed_essential_expenses
+    confirmed_optional_expenses = sum(
+        entry.current.amount_paise
+        for entry in state.optional_expenses
+        if entry.current.confidence == "confirmed"
+    )
+    confirmed_debts = sum(
+        debt.min_payment_paise
+        for debt in state.debts
+        if debt.current.confidence == "confirmed"
+    )
+    
+    total_confirmed_expenses = (
+        confirmed_essential_expenses + confirmed_optional_expenses + confirmed_debts
+    )
+    return confirmed_income - total_confirmed_expenses

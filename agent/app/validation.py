@@ -5,7 +5,7 @@ This layer enforces business constraints and executes unit conversions
 deterministic data types matching `SessionState`.
 """
 
-from datetime import date
+import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -67,7 +67,7 @@ class AddIncomeArgs(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     name: str
     amount_paise: RupeesToPaise = Field(alias="amount_rupees")
-    date: date
+    date: datetime.date
     confidence: Confidence
 
 
@@ -76,7 +76,7 @@ class AddExpenseArgs(BaseModel):
     category: Literal["essential", "optional"]
     name: str
     amount_paise: RupeesToPaise = Field(alias="amount_rupees")
-    date: date
+    date: datetime.date
     confidence: Confidence
 
 
@@ -114,16 +114,39 @@ class AddDebtArgs(BaseModel):
     name: str
     kind: DebtKind
     kind_label: str | None = None
-    min_payment_paise: RupeesToPaise = Field(alias="min_payment_rupees")
-    date: date
+    min_payment_paise: OptionalRupeesToPaise = Field(default=None, alias="min_payment_rupees")
+    date: datetime.date | None = None
     confidence: Confidence
     balance_paise: OptionalRupeesToPaise = Field(default=None, alias="balance_rupees")
     interest_rate_bps: PercentToBps = Field(default=None, alias="interest_rate_percent")
+    duration_months: int | None = Field(default=None, ge=1, le=600)
 
     @model_validator(mode="after")
     def _other_kind_requires_label(self) -> "AddDebtArgs":
         if self.kind == "other" and not (self.kind_label and self.kind_label.strip()):
             raise ValueError("kind_label is required when kind is 'other'")
+        return self
+
+    @model_validator(mode="after")
+    def _emi_or_loan_details_required(self) -> "AddDebtArgs":
+        """Require either an explicit EMI or the full loan details to compute one.
+
+        The backend will compute the EMI from (balance, rate, duration) if no
+        min_payment is given — but only when all three are present. Without any
+        of these the debt cannot be meaningfully recorded.
+        """
+        has_emi = self.min_payment_paise is not None
+        can_compute = (
+            self.balance_paise is not None
+            and self.interest_rate_bps is not None
+            and self.duration_months is not None
+        )
+        if not has_emi and not can_compute:
+            raise ValueError(
+                "Either min_payment_rupees OR all three of (balance_rupees, "
+                "interest_rate_percent, duration_months) must be provided so the "
+                "EMI can be calculated."
+            )
         return self
 
 

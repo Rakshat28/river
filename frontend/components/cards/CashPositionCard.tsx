@@ -36,7 +36,7 @@ export function CashPositionCard({ cashPositionPaise = 0 }: CashPositionCardProp
           {paiseToRupeesDisplay(cashPositionPaise)}
         </p>
         <p className="mt-2 text-xs text-zinc-400">
-          Calculated server-side from confirmed income and essential expenses.
+          Current confirmed cash balance after essential obligations.
         </p>
       </div>
     </div>

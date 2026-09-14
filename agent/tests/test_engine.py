@@ -10,6 +10,7 @@ try:
     from agent.app.engine import (
         SessionState,
         build_plan,
+        calculate_emi_paise,
         compute_blocking_issues,
         compute_cash_position,
         compute_missing_fields,
@@ -19,6 +20,7 @@ except ImportError:
     from app.engine import (
         SessionState,
         build_plan,
+        calculate_emi_paise,
         compute_blocking_issues,
         compute_cash_position,
         compute_missing_fields,
@@ -228,12 +230,17 @@ class TestBuildPlanFixtures:
 
         plan = build_plan(state)
         assert plan.status == "unsolvable"
-        assert len(plan.missed_obligations) == 1
-        missed = plan.missed_obligations[0]
-        assert missed.name == "Loan EMI"
-        assert missed.due_date == date(2026, 9, 29)
-        assert missed.shortfall_paise == 300000  # 8,000 - 5,000 = 3,000 paise
-        assert plan.final_balance_paise == 0
+        assert len(plan.missed_obligations) == 2
+        
+        missed_loan = plan.missed_obligations[0]
+        assert missed_loan.name == "Loan EMI"
+        assert missed_loan.shortfall_paise == 300000  # 8,000 - 5,000 = 3,000 paise
+        
+        missed_cc = plan.missed_obligations[1]
+        assert missed_cc.name == "Credit Card Min"
+        assert missed_cc.shortfall_paise == 500000  # 5,000 - 0 = 5,000 paise
+        
+        assert plan.final_balance_paise == -800000
 
     def test_same_day_debt_collision_loan_vs_credit_card(self):
         """Test same-day collision between a loan EMI (rank 2) and credit card (rank 3).
@@ -263,8 +270,8 @@ class TestBuildPlanFixtures:
         assert missed.due_date == date(2026, 9, 20)
         assert missed.shortfall_paise == 200000  # 6,000 - 4,000 = 2,000 shortfall
         assert (
-            plan.final_balance_paise == 400000
-        )  # 10,000 - 6,000 (vehicle loan paid) = 4,000 left
+            plan.final_balance_paise == -200000
+        )  # 10,000 - 6,000 (vehicle loan) - 6,000 (credit card) = -2,000 deficit
 
 
 class TestEngineEdgeCases:
@@ -282,7 +289,7 @@ class TestEngineEdgeCases:
         missed = plan.missed_obligations[0]
         assert missed.name == "Rent"
         assert missed.shortfall_paise == 1000000
-        assert plan.final_balance_paise == 0
+        assert plan.final_balance_paise == -1000000
 
     def test_same_day_income_expense_debt(self):
         """Edge case 2: Income, essential expense, and debt due on day 0. Income applied first."""
@@ -331,3 +338,97 @@ class TestEngineEdgeCases:
         # Explicitly confirm the entry is NOT in missed_obligations
         missed_ids = [m.entry_id for m in plan.missed_obligations]
         assert state.essential_expenses[0].id not in missed_ids
+
+    def test_step_8_5_financial_insights_and_disclaimer(self):
+        """Step 8.5 test: Verify deterministic insights for high interest credit card + unsolvable deficit & verbatim disclaimer."""
+        state = _make_state(today=date(2026, 9, 14))
+        # Income: ₹10,000 on day 0
+        state.income.append(_make_entry("Salary", 1000000, 14))
+        # Essential: rent ₹15,000 on day 4 (causes unsolvable deficit of ₹5,000)
+        state.essential_expenses.append(_make_entry("Rent", 1500000, 18))
+        # Debt: Credit Card with 24% APR (2400 bps)
+        debt = _make_debt(
+            "HDFC Credit Card", 200000, date(2026, 9, 25), kind="credit_card"
+        )
+        debt.interest_rate_bps = 2400
+        state.debts.append(debt)
+
+        plan = build_plan(state)
+
+        assert plan.status == "unsolvable"
+        assert plan.disclaimer == (
+            "Please note: This assistant is an AI tool, not a SEBI-registered or government-certified financial advisor. "
+            "These insights are mathematical projections, not professional financial advice."
+        )
+
+        # Assert plan.insights contains both consolidation & tenure extension strings
+        consolidation_found = any("consolidate" in insight for insight in plan.insights)
+        tenure_extension_found = any(
+            "tenure extension" in insight for insight in plan.insights
+        )
+
+        assert (
+            consolidation_found
+        ), "High-interest debt consolidation insight expected in plan.insights"
+        assert (
+            tenure_extension_found
+        ), "Unsolvable deficit tenure extension insight expected in plan.insights"
+
+
+class TestCalculateEmiPaise:
+    """Unit tests for the reducing-balance EMI calculator.
+
+    These tests are the sole authoritative verification that the EMI formula
+    is correct — no other module may re-implement EMI arithmetic.
+    """
+
+    def test_standard_home_loan(self):
+        """₹30L at 8.5% p.a. for 240 months → approx ₹26,035/month."""
+        emi = calculate_emi_paise(
+            balance_paise=3_000_000 * 100,  # ₹30,00,000 = 3_000_000 rupees = 300_000_000 paise
+            annual_rate_bps=850,             # 8.5%
+            duration_months=240,
+        )
+        # Expected: ~₹26,035. Accepted tolerance: ±100 rupees (rounding)
+        assert 2_600_000 <= emi <= 2_610_000, f"Expected ~₹26,035; got ₹{emi // 100}"
+
+    def test_personal_loan(self):
+        """₹1L at 12% p.a. for 12 months → approx ₹8,885/month."""
+        emi = calculate_emi_paise(
+            balance_paise=100_000 * 100,  # ₹1,00,000 = 100_000 rupees = 10_000_000 paise
+            annual_rate_bps=1200,
+            duration_months=12,
+        )
+        assert 885_000 <= emi <= 890_000, f"Expected ~₹8,885; got ₹{emi // 100}"
+
+    def test_zero_interest_loan(self):
+        """₹12,000 at 0% for 12 months → exactly ₹1,000/month."""
+        emi = calculate_emi_paise(
+            balance_paise=1_200_000,  # ₹12,000 in paise
+            annual_rate_bps=0,
+            duration_months=12,
+        )
+        assert emi == 100_000, f"Expected ₹1,000; got ₹{emi // 100}"
+
+    def test_single_month_loan(self):
+        """A 1-month loan is always equal to the full principal (plus 1 month interest)."""
+        emi = calculate_emi_paise(
+            balance_paise=500_000,  # ₹5,000
+            annual_rate_bps=1200,   # 12% p.a. → 1% per month
+            duration_months=1,
+        )
+        # EMI = 5000 * 0.01 * 1.01 / (1.01 - 1) = 5000 * 1.01 = 5050
+        assert 504_000 <= emi <= 506_000, f"Expected ~₹5,050; got ₹{emi // 100}"
+
+    def test_invalid_duration_raises(self):
+        """duration_months=0 must raise ValueError."""
+        import pytest
+        with pytest.raises(ValueError, match="duration_months"):
+            calculate_emi_paise(balance_paise=100_000, annual_rate_bps=1200, duration_months=0)
+
+    def test_invalid_balance_raises(self):
+        """balance_paise=0 must raise ValueError."""
+        import pytest
+        with pytest.raises(ValueError, match="balance_paise"):
+            calculate_emi_paise(balance_paise=0, annual_rate_bps=1200, duration_months=12)
+

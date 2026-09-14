@@ -7,12 +7,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.bot import REGISTERED_TOOLS, _create_pipecat_handler
-from app.prompt import SYSTEM_PROMPT
-from app.session_store import get_or_create, locked_state
-from app.state import SessionState
-from app.tools import TOOL_SCHEMAS, add_income
-from app.validation import AddIncomeArgs
+try:
+    from agent.app.bot import REGISTERED_TOOLS, _create_pipecat_handler
+    from agent.app.prompt import SYSTEM_PROMPT
+    from agent.app.session_store import get_or_create, locked_state
+    from agent.app.state import SessionState
+    from agent.app.tools import TOOL_SCHEMAS, add_income
+    from agent.app.validation import AddIncomeArgs
+except ImportError:
+    from app.bot import REGISTERED_TOOLS, _create_pipecat_handler
+    from app.prompt import SYSTEM_PROMPT
+    from app.session_store import get_or_create, locked_state
+    from app.state import SessionState
+    from app.tools import TOOL_SCHEMAS, add_income
+    from app.validation import AddIncomeArgs
 
 
 class TestBotSystemPrompt:

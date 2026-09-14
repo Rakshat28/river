@@ -12,14 +12,10 @@ import { useEffect, useState } from "react";
 import { createDailySession, type DailySessionResponse } from "@/lib/daily-client";
 import { SessionProvider, SessionDailySubscriber, useSessionState } from "@/lib/session-context";
 
-import { IncomeCard } from "@/components/cards/IncomeCard";
-import { EssentialExpensesCard } from "@/components/cards/EssentialExpensesCard";
-import { DebtsCard } from "@/components/cards/DebtsCard";
-import { MissingInformationCard } from "@/components/cards/MissingInformationCard";
-import { CashPositionCard } from "@/components/cards/CashPositionCard";
-import { ShortfallSurplusCard } from "@/components/cards/ShortfallSurplusCard";
-import { FinalPlanCard } from "@/components/cards/FinalPlanCard";
-import { ProposedActionsCard } from "@/components/cards/ProposedActionsCard";
+import { AgentOrb, type OrbState } from "@/components/AgentOrb";
+import { SubtitleText } from "@/components/SubtitleText";
+import { FocusCard } from "@/components/FocusCard";
+import { FullSummaryDrawer } from "@/components/FullSummaryDrawer";
 
 function CallRoom({
   session,
@@ -31,7 +27,9 @@ function CallRoom({
   const callObject = useDaily();
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { state } = useSessionState();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const { state, currentFocus, agentUtterance, userUtterance } = useSessionState();
 
   useDailyEvent("joined-meeting", () => {
     setIsConnected(true);
@@ -63,9 +61,7 @@ function CallRoom({
   };
 
   useEffect(() => {
-    if (!callObject) {
-      return;
-    }
+    if (!callObject) return;
 
     void callObject.join({
       url: session.room_url,
@@ -75,6 +71,14 @@ function CallRoom({
       subscribeToTracksAutomatically: true,
     });
   }, [callObject, session]);
+
+  // Determine current Agent Orb state
+  let orbState: OrbState = "idle";
+  if (agentUtterance) {
+    orbState = "speaking";
+  } else if (userUtterance || isConnected) {
+    orbState = "listening";
+  }
 
   if (error) {
     return (
@@ -95,39 +99,34 @@ function CallRoom({
   }
 
   return (
-    <div className="min-h-screen w-full bg-zinc-950 text-zinc-50 p-6">
+    <div className="min-h-screen w-full bg-zinc-950 text-zinc-50 flex flex-col justify-between p-3 sm:p-6 relative overflow-hidden">
       <DailyAudio />
 
-      {/* Top Navigation / Controls Bar */}
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-zinc-800 bg-zinc-900/80 px-6 py-4 shadow-md backdrop-blur">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-zinc-100">
-            Riverline Finance Assistant
-          </h1>
-          <p className="text-xs text-zinc-400">
-            Room: {session.room_url.split("/").pop()}
-            {state?.state_version !== undefined && (
-              <span className="ml-2 font-mono text-zinc-500">
-                (State v{state.state_version})
-              </span>
-            )}
-          </p>
+      {/* Top Header Bar */}
+      <header className="flex items-center justify-between gap-2 sm:gap-4 rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3.5 py-3 sm:px-6 sm:py-3.5 backdrop-blur-md z-10">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xs sm:text-sm">
+            R
+          </div>
+          <span className="text-sm sm:text-base font-bold tracking-tight text-zinc-100">
+            Riverline
+          </span>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-200">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
-              }`}
-            />
-            {isConnected ? "Connected (Live Voice)" : "Connecting..."}
-          </div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(true)}
+            className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 hover:border-zinc-600"
+          >
+            View everything so far
+          </button>
+
           {isConnected && (
             <button
               type="button"
               onClick={handleLeave}
-              className="rounded-full bg-red-600 px-5 py-2 text-xs font-semibold text-white transition hover:bg-red-500"
+              className="rounded-full bg-red-600/90 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-semibold text-white transition hover:bg-red-500 whitespace-nowrap"
             >
               End Call
             </button>
@@ -135,28 +134,28 @@ function CallRoom({
         </div>
       </header>
 
-      {/* Dashboard Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Top Summary Row */}
-        <CashPositionCard cashPositionPaise={state?.cash_position_paise ?? 0} />
-        <ShortfallSurplusCard cashPositionPaise={state?.cash_position_paise ?? 0} />
-        <MissingInformationCard missingFields={state?.missing_fields ?? []} />
+      {/* Center Voice-First Interface */}
+      <main className="flex-1 flex flex-col items-center justify-center py-4 sm:py-8 space-y-6 sm:space-y-8 z-10 my-auto w-full">
+        {/* Animated Agent Orb */}
+        <AgentOrb orbState={orbState} />
 
-        {/* Detailed Item Lists Grid */}
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <IncomeCard income={state?.income ?? []} />
-          <EssentialExpensesCard
-            essentialExpenses={state?.essential_expenses ?? []}
-          />
-          <DebtsCard debts={state?.debts ?? []} />
-        </div>
+        {/* Live Subtitles */}
+        <SubtitleText
+          agentUtterance={agentUtterance}
+          userUtterance={userUtterance}
+          isGeneratingPlan={currentFocus === "plan" && !state?.plan}
+        />
 
-        {/* Final Plan & Proposed Actions Row */}
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FinalPlanCard plan={state?.plan ?? null} />
-          <ProposedActionsCard plan={state?.plan ?? null} />
-        </div>
-      </div>
+        {/* Active Context Card Router */}
+        <FocusCard currentFocus={currentFocus} state={state} />
+      </main>
+
+      {/* Opt-In Summary Drawer */}
+      <FullSummaryDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        state={state}
+      />
     </div>
   );
 }
@@ -170,6 +169,11 @@ export default function Home() {
     setIsStarting(true);
 
     try {
+      const existingCall = Daily.getCallInstance();
+      if (existingCall) {
+        await existingCall.destroy();
+      }
+
       const createdSession = await createDailySession();
       const callObject = Daily.createCallObject({
         startAudioOff: false,
@@ -188,6 +192,10 @@ export default function Home() {
   };
 
   const handleEndCall = () => {
+    if (dailyCall) {
+      dailyCall.leave().catch(() => {});
+      dailyCall.destroy().catch(() => {});
+    }
     setSession(null);
     setDailyCall(null);
   };
@@ -195,21 +203,24 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50">
       {!dailyCall || !session ? (
-        <div className="flex min-h-screen flex-col items-center justify-center p-6 text-center">
-          <div className="max-w-md space-y-4">
-            <h1 className="text-3xl font-extrabold tracking-tight text-zinc-100">
-              Riverline Assistant
+        <div className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-6 text-center">
+          <div className="max-w-md w-full space-y-5 px-2">
+            <div className="flex justify-center mb-2">
+              <AgentOrb orbState="idle" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-100">
+              Riverline Finance Assistant
             </h1>
-            <p className="text-sm text-zinc-400">
-              Voice-first financial planning assistant. Start a call to begin discussing your income, expenses, and debts.
+            <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+              Voice-first financial planning. Start a voice session to interact naturally with real-time financial cards.
             </p>
             <button
               type="button"
               onClick={handleStartCall}
               disabled={isStarting}
-              className="rounded-full bg-emerald-500 px-8 py-3.5 text-sm font-bold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 shadow-lg shadow-emerald-950/40"
+              className="w-full sm:w-auto rounded-full bg-emerald-500 px-6 sm:px-8 py-3.5 text-xs sm:text-sm font-bold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 shadow-lg shadow-emerald-950/40"
             >
-              {isStarting ? "Initializing Session..." : "Start Financial Session"}
+              {isStarting ? "Initializing Voice Session..." : "Start Financial Session"}
             </button>
           </div>
         </div>
@@ -224,3 +235,4 @@ export default function Home() {
     </main>
   );
 }
+

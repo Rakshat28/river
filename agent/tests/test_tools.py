@@ -11,28 +11,52 @@ from pydantic import ValidationError
 # Ensure agent module is accessible when pytest is run from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.session_store import get_or_create, locked_state
-from app.validation import (
-    AddDebtArgs,
-    AddExpenseArgs,
-    AddIncomeArgs,
-    ConfirmUserUnderstoodArgs,
-    FinalizePlanArgs,
-    ResolveDuplicateArgs,
-    UpdateEntryArgs,
-)
-from app.state import SessionState
-from app.tools import (
-    ToolResult,
-    state_mutation,
-    add_debt,
-    add_expense,
-    add_income,
-    confirm_user_understood,
-    finalize_plan,
-    resolve_duplicate,
-    update_entry,
-)
+try:
+    from agent.app.session_store import get_or_create, locked_state
+    from agent.app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
+    from agent.app.state import SessionState
+    from agent.app.tools import (
+        ToolResult,
+        state_mutation,
+        add_debt,
+        add_expense,
+        add_income,
+        confirm_user_understood,
+        finalize_plan,
+        resolve_duplicate,
+        update_entry,
+    )
+except ImportError:
+    from app.session_store import get_or_create, locked_state
+    from app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
+    from app.state import SessionState
+    from app.tools import (
+        ToolResult,
+        state_mutation,
+        add_debt,
+        add_expense,
+        add_income,
+        confirm_user_understood,
+        finalize_plan,
+        resolve_duplicate,
+        update_entry,
+    )
 
 
 class TestToolResult:

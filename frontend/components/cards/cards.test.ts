@@ -62,6 +62,7 @@ const mockDebts: Debt[] = [
     min_payment_paise: 300000,
     balance_paise: 5000000,
     interest_rate_bps: null,
+    duration_months: null,
     is_secured: null,
     current: {
       amount_paise: 300000,

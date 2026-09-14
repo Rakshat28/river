@@ -6,33 +6,54 @@ from typing import Any, Literal, Callable, Coroutine
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime, timedelta, timezone
 
-from app.session_store import locked_state
-from app.state import (
-    SessionState,
-    Debt,
-    Entry,
-    FieldHistory,
-    Recurrence,
-    Conflict,
-    compute_blocking_issues,
-)
-from app.validation import (
-    AddDebtArgs,
-    AddExpenseArgs,
-    AddIncomeArgs,
-    ConfirmUserUnderstoodArgs,
-    FinalizePlanArgs,
-    RemoveEntryArgs,
-    ResolveConflictArgs,
-    ResolveDuplicateArgs,
-    UpdateEntryArgs,
-)
-from app.entity_resolution import find_near_duplicate
-
 try:
-    from agent.app.engine import build_plan
+    from agent.app.session_store import locked_state
+    from agent.app.state import (
+        SessionState,
+        Debt,
+        Entry,
+        FieldHistory,
+        Recurrence,
+        Conflict,
+        compute_blocking_issues,
+    )
+    from agent.app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        RemoveEntryArgs,
+        ResolveConflictArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
+    from agent.app.entity_resolution import find_near_duplicate
+    from agent.app.engine import build_plan, calculate_emi_paise
 except ImportError:
-    from app.engine import build_plan
+    from app.session_store import locked_state
+    from app.state import (
+        SessionState,
+        Debt,
+        Entry,
+        FieldHistory,
+        Recurrence,
+        Conflict,
+        compute_blocking_issues,
+    )
+    from app.validation import (
+        AddDebtArgs,
+        AddExpenseArgs,
+        AddIncomeArgs,
+        ConfirmUserUnderstoodArgs,
+        FinalizePlanArgs,
+        RemoveEntryArgs,
+        ResolveConflictArgs,
+        ResolveDuplicateArgs,
+        UpdateEntryArgs,
+    )
+    from app.entity_resolution import find_near_duplicate
+    from app.engine import build_plan, calculate_emi_paise
 
 TOOL_SCHEMAS = [
     {
@@ -64,6 +85,10 @@ TOOL_SCHEMAS = [
                         "type": "string",
                         "enum": ["confirmed", "estimated"],
                         "description": "Set to 'confirmed' if the user stated an exact, known figure. Set to 'estimated' if the user used words like 'around', 'about', 'maybe', or gave a rough range.",
+                    },
+                    "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code if the user stated the amount in a non-INR currency (e.g. 'USD', 'EUR', 'GBP', 'AED'). Omit or leave blank if the amount is already in INR. The system will convert to INR automatically.",
                     },
                 },
                 "required": ["name", "amount_rupees", "date", "confidence"],
@@ -106,6 +131,10 @@ TOOL_SCHEMAS = [
                         "enum": ["confirmed", "estimated"],
                         "description": "Set to 'confirmed' for exact bills. Set to 'estimated' for variable expenses like groceries or utilities where the user is guessing.",
                     },
+                    "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code if the user stated the amount in a non-INR currency (e.g. 'USD', 'EUR', 'GBP'). Omit if the amount is already in INR.",
+                    },
                 },
                 "required": ["category", "name", "amount_rupees", "date", "confidence"],
                 "additionalProperties": False,
@@ -119,7 +148,9 @@ TOOL_SCHEMAS = [
             "description": (
                 "Register a new, previously unmentioned debt obligation, such as a bank loan, EMI, credit card, or informal borrowing. "
                 "CRITICAL: Do NOT call this to update an existing debt. Use 'update_entry' for corrections. "
-                "This tool requires the minimum payment due. Total balance and interest rate are optional but highly encouraged if the user mentions them."
+                "EMI CALCULATION RULE: If the user states the loan amount (principal), interest rate, and tenure but NOT the monthly EMI, "
+                "pass balance_rupees, interest_rate_percent, and duration_months — the system will compute the EMI automatically. "
+                "Do NOT ask the LLM to calculate or estimate the EMI itself."
             ),
             "parameters": {
                 "type": "object",
@@ -149,11 +180,15 @@ TOOL_SCHEMAS = [
                     },
                     "min_payment_rupees": {
                         "type": "number",
-                        "description": "The mandatory minimum payment or EMI due for this specific period, in INR.",
+                        "description": (
+                            "The monthly EMI or minimum payment in INR, IF the user explicitly states it. "
+                            "Omit this if the user only gave loan amount, interest rate, and tenure — "
+                            "the system will compute the EMI from those three values automatically."
+                        ),
                     },
                     "date": {
                         "type": "string",
-                        "description": "The exact due date for the minimum payment, strictly in ISO 8601 format (YYYY-MM-DD).",
+                        "description": "The exact due date for the minimum payment, strictly in ISO 8601 format (YYYY-MM-DD). If the user has not specified a due date, leave this empty.",
                     },
                     "confidence": {
                         "type": "string",
@@ -162,18 +197,24 @@ TOOL_SCHEMAS = [
                     },
                     "balance_rupees": {
                         "type": "number",
-                        "description": "The total outstanding principal balance left to pay off, in INR. Omit if the user does not state it.",
+                        "description": "The total outstanding principal balance left to pay off, in INR. Required if min_payment_rupees is not provided.",
                     },
                     "interest_rate_percent": {
                         "type": "number",
-                        "description": "The annualized interest rate as a percentage (e.g., 12.5 for 12.5%). Omit if unknown.",
+                        "description": "The annualized interest rate as a percentage (e.g., 12.5 for 12.5%). Required if min_payment_rupees is not provided.",
+                    },
+                    "duration_months": {
+                        "type": "integer",
+                        "description": "Remaining loan tenure in whole months (e.g., 36 for a 3-year loan). Required if min_payment_rupees is not provided.",
+                    },
+                    "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code if the user stated any monetary amounts in a non-INR currency (e.g. 'USD', 'GBP'). Applies to min_payment_rupees and balance_rupees. Omit if amounts are already in INR.",
                     },
                 },
                 "required": [
                     "name",
                     "kind",
-                    "min_payment_rupees",
-                    "date",
                     "confidence",
                 ],
                 "additionalProperties": False,
@@ -212,6 +253,10 @@ TOOL_SCHEMAS = [
                     "new_interest_rate_percent": {
                         "type": "number",
                         "description": "For debts: the corrected interest rate percentage.",
+                    },
+                    "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code if the user's corrected amount is in a non-INR currency (e.g. 'USD'). Omit if the amount is already in INR.",
                     },
                 },
                 "required": ["entry_id", "new_amount_rupees", "confidence"],
@@ -371,9 +416,9 @@ class ToolResult(BaseModel):
 
 
 try:
-    from app.broadcast import mark_room_dirty
-except ImportError:
     from agent.app.broadcast import mark_room_dirty
+except ImportError:
+    from app.broadcast import mark_room_dirty
 
 
 def state_mutation(func: Callable[..., Coroutine[Any, Any, ToolResult]]):
@@ -490,13 +535,28 @@ async def add_expense(
 async def add_debt(
     room_name: str, args: AddDebtArgs, state: SessionState = None
 ) -> ToolResult:
+    """Register a new debt entry. Computes EMI automatically if min_payment is
+    absent but balance, rate, and duration are all provided — see engine.py."""
     if not (state.today <= args.date <= state.today + timedelta(days=29)):
         return ToolResult.error("date must be within the next 30 days")
 
     existing_id = find_near_duplicate(state.debts, args.name)
 
+    # Resolve the monthly payment: use the stated EMI or compute from loan params.
+    if args.min_payment_paise is not None:
+        resolved_min_payment = args.min_payment_paise
+        computed_emi = False
+    else:
+        # Validation guarantees balance + rate + duration are all present here.
+        resolved_min_payment = calculate_emi_paise(
+            balance_paise=args.balance_paise,  # type: ignore[arg-type]
+            annual_rate_bps=args.interest_rate_bps,  # type: ignore[arg-type]
+            duration_months=args.duration_months,  # type: ignore[arg-type]
+        )
+        computed_emi = True
+
     history = FieldHistory(
-        amount_paise=args.min_payment_paise,
+        amount_paise=resolved_min_payment,
         confidence=args.confidence,
         turn_index=state.turn_index,
         timestamp=datetime.now(timezone.utc),
@@ -507,9 +567,10 @@ async def add_debt(
         kind=args.kind,
         kind_label=args.kind_label,
         due_date=args.date,
-        min_payment_paise=args.min_payment_paise,
+        min_payment_paise=resolved_min_payment,
         balance_paise=args.balance_paise,
         interest_rate_bps=args.interest_rate_bps,
+        duration_months=args.duration_months,
         current=history,
         history=[],
         possible_duplicate=bool(existing_id),
@@ -522,6 +583,13 @@ async def add_debt(
             "possible duplicate of an existing entry, please confirm with the user whether this is the same item or a genuinely separate one",
             entry_id=debt.id,
             duplicate_of=existing_id,
+        )
+
+    if computed_emi:
+        return ToolResult.ok(
+            entry_id=debt.id,
+            computed_emi_rupees=resolved_min_payment // 100,
+            message=f"EMI computed from loan details: ₹{resolved_min_payment // 100:,}/month. Tell the user the calculated EMI and ask them to confirm it looks correct.",
         )
 
     return ToolResult.ok(entry_id=debt.id)

@@ -1,46 +1,74 @@
-import type { SessionState } from "./types";
+import type { FocusTarget, SessionState } from "./types";
+
+export interface ExtendedSessionState {
+  state: SessionState | null;
+  currentFocus: FocusTarget;
+  agentUtterance: string | null;
+  userUtterance: string | null;
+}
 
 export type SessionAction =
   | { type: "HYDRATE"; payload: SessionState }
   | { type: "SET_STATE"; payload: SessionState }
+  | { type: "SET_FOCUS"; payload: FocusTarget }
+  | { type: "SET_AGENT_UTTERANCE"; payload: string }
+  | { type: "SET_USER_UTTERANCE"; payload: string }
   | { type: "RESET_STATE" };
 
+export const initialExtendedState: ExtendedSessionState = {
+  state: null,
+  currentFocus: "idle",
+  agentUtterance: null,
+  userUtterance: null,
+};
+
 export function sessionReducer(
-  state: SessionState | null,
+  extendedState: ExtendedSessionState = initialExtendedState,
   action: SessionAction
-): SessionState | null {
+): ExtendedSessionState {
   switch (action.type) {
     case "HYDRATE":
-      // Establishing baseline from REST snapshot endpoint on join — always applies regardless of version
-      return action.payload;
+      return {
+        ...extendedState,
+        state: action.payload,
+      };
 
     case "SET_STATE": {
-      if (!state) {
-        return action.payload;
+      const currentState = extendedState.state;
+      if (!currentState) {
+        return { ...extendedState, state: action.payload };
       }
 
       const currentVersion =
-        state.state_version ??
-        (state as unknown as { stateVersion?: number }).stateVersion ??
+        currentState.state_version ??
+        (currentState as unknown as { stateVersion?: number }).stateVersion ??
         0;
       const incomingVersion =
         action.payload.state_version ??
         (action.payload as unknown as { stateVersion?: number }).stateVersion ??
         0;
 
-      // Guards against the theoretical case of two broadcasts arriving out of order over the data channel:
-      // if the incoming payload's stateVersion is less than or equal to the currently held version, ignore the update (no-op).
+      // Guards against out-of-order broadcasts over WebRTC data channel
       if (incomingVersion <= currentVersion) {
-        return state;
+        return extendedState;
       }
 
-      return action.payload;
+      return { ...extendedState, state: action.payload };
     }
 
+    case "SET_FOCUS":
+      return { ...extendedState, currentFocus: action.payload };
+
+    case "SET_AGENT_UTTERANCE":
+      return { ...extendedState, agentUtterance: action.payload };
+
+    case "SET_USER_UTTERANCE":
+      return { ...extendedState, userUtterance: action.payload };
+
     case "RESET_STATE":
-      return null;
+      return initialExtendedState;
 
     default:
-      return state;
+      return extendedState;
   }
 }
